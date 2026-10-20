@@ -115,7 +115,10 @@ with tab_live:
     with right:
         step = 1.0 if src == "clip" else 60.0
         opts = [float(v) for v in np.arange(0, T - step, step)]
-        now = st.select_slider("Time", options=opts, value=opts[len(opts) // 2], key=f"live_t_{src}",
+        rt = [a for a in alerts if a["timescale"] in ("seconds", "minutes")]
+        start = max(rt, key=lambda a: a["impact"])["t"] if rt else T / 2          # open on the biggest live alert
+        start = min(opts, key=lambda o: abs(o - start - 120))                   # a couple of minutes after it fired
+        now = st.select_slider("Time", options=opts, value=start, key=f"live_t_{src}",
                                format_func=lambda v: fmt_t(v, src))
         st.markdown(f"**State at {fmt_t(now, src)}**")
         cur = ts[(ts["t"] >= now) & (ts["t"] < now + step)].groupby("zone").agg(
