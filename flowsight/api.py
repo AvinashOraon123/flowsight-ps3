@@ -29,6 +29,7 @@ from .geometry import load_homography
 from .heatmap import HeatGrid
 from .online import OnlineEngine
 from .pipeline import load_config, rpath
+from .privacy import suppress_small_groups
 from .zones import ZoneSet
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -51,7 +52,7 @@ def create_app(config: str | None = None, out_dir: str | None = None) -> FastAPI
 
     @app.get("/metrics")
     def metrics():
-        t = pd.read_parquet(need("zone_table.parquet"))
+        t = suppress_small_groups(pd.read_parquet(need("zone_table.parquet")))      # <5 visitors: no per-zone figures
         summ = json.loads(need("summary.json").read_text())
         return {"summary": summ, "zones": json.loads(t.to_json(orient="records"))}
 

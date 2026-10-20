@@ -135,3 +135,12 @@ def test_api_websocket_streams_anonymous_coordinates(client):
     assert len(frames) == 30 and msgs[-1] == {"done": True, "frames": 30}
     assert set(frames[0]) == {"t", "zones", "people", "events"}
     assert all(set(p) == {"id", "x", "y", "state", "zone"} for f in frames for p in f["people"])   # no pixels, no images
+
+
+def test_small_groups_are_suppressed_in_the_api(client):
+    from flowsight.privacy import MIN_GROUP
+    rows = client.get("/metrics").json()["zones"]
+    small = [r for r in rows if r["visitors"] < MIN_GROUP]
+    assert small, "the demo clip has a zone with < 5 visitors"
+    assert all(r["mean_dwell_s"] is None and r["engaged_s"] is None and r["suppressed"] for r in small)
+    assert all(r["mean_dwell_s"] is not None for r in rows if r["visitors"] >= MIN_GROUP)

@@ -86,7 +86,7 @@ The MOT17-04 scene is a night-time shopping street seen from above, **not a stor
 - Edge processing; the API exposes anonymous floor coordinates, zone counts and alerts. It has no video or image endpoint (tested).
 - No face recognition, no demographics. Saved debug video blurs the head region of every person box (top 20 %).
 - Track IDs are per-session integers; nothing links a person across days.
-- Only zone aggregates are shown; the proposal's rule of not reporting groups under 5 people is **not implemented** in this prototype.
+- Zones seen by fewer than 5 distinct people show no per-zone dwell or behaviour figures in the API and dashboard (`flowsight/privacy.py`, tested); raw files on disk are unchanged.
 - Framed for India's DPDP Act 2023 and GDPR; signage and a 30-day retention policy are deployment tasks, not code here.
 
 ## Known limitations

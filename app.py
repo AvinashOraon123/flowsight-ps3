@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from flowsight.heatmap import HeatGrid, render_heat
+from flowsight.privacy import MIN_GROUP, suppress_small_groups
 from flowsight.zones import ZoneSet
 
 ROOT = Path(__file__).parent
@@ -157,10 +158,12 @@ with tab_live:
 # ================================================================== ZONES
 with tab_zones:
     st.subheader("Section-by-section dwell time")
-    show = table[["zone", "kind", "visits", "visitors", "mean_dwell_s", "median_dwell_s", "engaged_s", "blocked_s",
+    shown = suppress_small_groups(table)
+    show = shown[["zone", "kind", "visits", "visitors", "mean_dwell_s", "median_dwell_s", "engaged_s", "blocked_s",
                   "blocked_share", "passers", "engaged_stoppers", "stop_ratio", "peak_count", "peak_C",
                   "bottleneck_min", "dead_zone"]].copy()
     show["dead_zone"] = show["dead_zone"].map({True: "⚠ dead zone", False: ""})
+    show.loc[shown["suppressed"], "dead_zone"] = f"hidden (<{MIN_GROUP} people)"
     st.dataframe(show, width="stretch", hide_index=True, column_config={
         "mean_dwell_s": st.column_config.NumberColumn("mean dwell s", format="%.1f"),
         "median_dwell_s": st.column_config.NumberColumn("median dwell s", format="%.1f"),
@@ -197,7 +200,7 @@ with tab_zones:
                      .drop(columns=["alert_t"]).round(2), width="stretch", hide_index=True)
     else:
         st.info("No zone was congested for long enough to flag in this data.")
-    dead = table[table["dead_zone"]]
+    dead = shown[shown["dead_zone"]]
     st.markdown("**Dead zones**")
     if len(dead):
         for _, r in dead.iterrows():
