@@ -74,3 +74,15 @@ _Generated 2026-10-20 11:55 by `python -m eval.run_eval`._
 | Staff exclusion (uniform cue) | simulated shoppers + 3 synthetic staff in 5-min fragments | precision 0.941, recall 1.0; 27 of 951 shoppers wrongly removed |
 
 These test the logic. Real cameras, real clothing and real uniforms will be harder, and appearance added only 2 points here because the simulated overlap is not crowded.
+
+## Fine-tuning experiment (negative result)
+
+YOLOv8n fine-tuned on CPU for 15 epochs on MOT17-05/10/11/13 (892 train frames, 960 px), then measured on clips never used in training (same protocol as above, conf >= 0.25 for tracking). Validation mAP@0.5 on held-out frames of the *training* clips was 0.843.
+
+| Clip | Stock AP@0.5 | Fine-tuned AP@0.5 | Stock IDF1 | Fine-tuned IDF1 | Stock MOTA | Fine-tuned MOTA |
+|---|---|---|---|---|---|---|
+| MOT17-04 | 0.664 | 0.498 | 0.592 | 0.485 | 0.466 | 0.344 |
+| MOT17-02 | 0.672 | 0.500 | 0.469 | 0.354 | 0.365 | 0.159 |
+| MOT17-09 | 0.913 | 0.898 | 0.658 | 0.603 | 0.699 | 0.636 |
+
+Fine-tuning made every held-out clip worse. The model fitted the four training scenes (the good validation score is from the same scenes) and did not generalise to the crowded or differently viewed ones. The default detector therefore stays the stock `yolov8n.pt`. Targets (AP 0.85, IDF1 0.70) are still not met on MOT17-04 or -02. Closing the gap needs more varied training data, not more epochs on these clips.
