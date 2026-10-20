@@ -106,22 +106,35 @@ def project_tracks(df_img: pd.DataFrame, H: np.ndarray, zones, min_track_s: floa
 
 # ------------------------------------------------------- steps 3-4: analytics
 def run_analytics(cfg: dict, df_img: pd.DataFrame, out_dir: Path, fps: float, log=print) -> dict:
-    import json
-
-    from . import actions, bottleneck, heatmap, journeys, metrics
+    """Real video path: image tracks -> floor coordinates -> analyze()."""
     from .geometry import load_homography
     from .zones import ZoneSet
 
-    p, zones = cfg["analytics"], ZoneSet.load(rpath(cfg, "zones"))
-    H = load_homography(rpath(cfg, "homography"))
-    tr = project_tracks(df_img, H, zones, p.get("min_track_s", 1.0))
+    zones = ZoneSet.load(rpath(cfg, "zones"))
+    tr = project_tracks(df_img, load_homography(rpath(cfg, "homography")), zones, cfg["analytics"].get("min_track_s", 1.0))
+    return analyze(cfg, tr, zones, fps, out_dir, log=log)
+
+
+def analyze(cfg: dict, tr: pd.DataFrame, zones, fps: float, out_dir: Path, forecast: pd.DataFrame | None = None,
+            sales: pd.DataFrame | None = None, log=print) -> dict:
+    """Floor-coordinate tracks -> zone metrics, bottlenecks, dead zones, queues, journeys, ranked alerts.
+
+    Shared by the real-video pipeline and the simulator so both go through identical analytics code.
+    `tr` needs: frame, t, track_id, x, y, vx, vy, speed, zone.
+    """
+    import json
+
+    from . import actions, bottleneck, heatmap, journeys, metrics
+
+    p = cfg["analytics"]
+    bin_s = float(p.get("ts_bin_s", 1.0))
     tr = metrics.add_motion_state(tr, fps, p)
     events = metrics.zone_events(tr, fps, p)
     table = metrics.build_zone_table(tr, events, zones, p)
 
     t_end = float(tr["t"].max() + 1.0 / fps)
-    ts = bottleneck.zone_timeseries(tr, zones, fps, 1.0, p["v_free_ms"], t_end=t_end)
-    bn = bottleneck.flag_bottlenecks(ts, p["bottleneck_threshold"], p["bottleneck_sustain_s"])
+    ts = bottleneck.zone_timeseries(tr, zones, fps, bin_s, p["v_free_ms"], t_end=t_end)
+    bn = bottleneck.flag_bottlenecks(ts, p["bottleneck_threshold"], p["bottleneck_sustain_s"], bin_s)
     heat = heatmap.heat_from_tracks(tr, zones.width_m, zones.height_m, fps, p["heat_cell_m"])
     dz = bottleneck.dead_zones(table, zones, heat, p)
 
@@ -132,13 +145,14 @@ def run_analytics(cfg: dict, df_img: pd.DataFrame, out_dir: Path, fps: float, lo
     table = table.merge(dz[["zone", "dead_zone", "adj_visit_rate"]], on="zone", how="left")
     table["dead_zone"] = table["dead_zone"].fillna(False).astype(bool)
 
-    queues = {z.name: metrics.queue_series(ts, events, z.name) for z in zones.of_kind("queue")}
+    queues = {z.name: metrics.queue_series(ts, events, z.name, p.get("queue_window_s", 60.0)) for z in zones.of_kind("queue")}
     for name, q in queues.items():
         i = table["zone"] == name
         table.loc[i, "peak_queue"] = q["queue_len"].max()
         table.loc[i, "max_est_wait_min"] = q["est_wait_min"].max()
     jt = journeys.journey_table(tr, events)
-    al = actions.generate(ts, queues, bn, table, dz, t_end, cfg["actions"])
+    al = actions.generate(ts, queues, bn, table, dz, t_end, cfg["actions"], forecast,
+                          cfg.get("forecast", {}).get("alert_threshold", p["bottleneck_threshold"]), sales)
 
     tr.to_parquet(out_dir / "tracks.parquet")
     tr[["frame", "t", "track_id", "x", "y", "speed", "zone", "state"]].to_csv(out_dir / "tracks.csv", index=False)

@@ -1,0 +1,14 @@
+{
+  "note": "SIMULATED store (30 m x 20 m) used by flowsight.simulate. Dairy corner is deliberately unpopular (ground-truth dead zone). Promo endcap sits on the entrance route. Checkout lane is the queue zone. capacity = people at which a zone counts as jammed.",
+  "floor_plan": {"width_m": 30, "height_m": 20, "px_per_m": 30},
+  "zones": [
+    {"name": "Entrance",       "kind": "entrance", "priority": 1, "capacity": 12, "polygon": [[12, 0], [18, 0], [18, 3], [12, 3]]},
+    {"name": "Promo endcap",   "kind": "endcap",   "priority": 2, "capacity": 8,  "polygon": [[6, 3.5], [10, 3.5], [10, 6.5], [6, 6.5]]},
+    {"name": "Checkout lane",  "kind": "queue",    "priority": 3, "capacity": 10, "polygon": [[22, 4], [26, 4], [26, 13], [22, 13]]},
+    {"name": "Fresh produce",  "kind": "display",  "priority": 4, "capacity": 10, "polygon": [[1, 4], [6, 4], [6, 10], [1, 10]]},
+    {"name": "Aisle 1",        "kind": "aisle",    "priority": 5, "capacity": 8,  "polygon": [[8, 8], [11, 8], [11, 18], [8, 18]]},
+    {"name": "Aisle 2",        "kind": "aisle",    "priority": 6, "capacity": 8,  "polygon": [[12.5, 8], [15.5, 8], [15.5, 18], [12.5, 18]]},
+    {"name": "Aisle 3",        "kind": "aisle",    "priority": 7, "capacity": 8,  "polygon": [[17, 8], [20, 8], [20, 18], [17, 18]]},
+    {"name": "Dairy corner",   "kind": "display",  "priority": 8, "capacity": 8,  "polygon": [[1, 13], [6, 13], [6, 19], [1, 19]]}
+  ]
+}

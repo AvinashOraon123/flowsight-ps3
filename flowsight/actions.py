@@ -32,7 +32,8 @@ class Alert:
 def queue_alerts(q: pd.DataFrame, zone: str, p: dict) -> list[Alert]:
     """Open another till when the lane is long or the estimated wait is long. q: queue_series output."""
     out = []
-    hit = q[(q["queue_len"] >= p["queue_open_till"]) | (q["est_wait_min"] > p["wait_open_till_min"])]
+    # wait = length / service rate explodes when almost nobody is served, so a long wait alone needs >= 3 people
+    hit = q[(q["queue_len"] >= p["queue_open_till"]) | ((q["queue_len"] >= 3) & (q["est_wait_min"] > p["wait_open_till_min"]))]
     for _, r in hit.iterrows():
         wait = r["est_wait_min"]
         w = f", est. wait {wait:.1f} min at {r['service_per_min']:.1f} people/min" if np.isfinite(wait) else \
@@ -59,7 +60,7 @@ def forecast_alerts(fc: pd.DataFrame, thr: float) -> list[Alert]:
     out = []
     for (zone, h), g in fc.groupby(["zone", "horizon_min"]):
         g = g.sort_values("t")
-        hot = (g["pred_C"] > thr).to_numpy()
+        hot = (g["pred_C"] > (g["thr"] if "thr" in g else thr)).to_numpy()
         for i in range(len(g)):
             if hot[i] and (i == 0 or not hot[i - 1]):
                 r = g.iloc[i]

@@ -1,0 +1,45 @@
+# FlowSight on the SIMULATED store day (flowsight.simulate). Tracks are perfect (no vision noise); this
+# validates the analytics, forecaster and action engine, not the detector.
+out_dir: outputs/sim
+zones: data/sim_zones.json
+floor_plan: data/sim_floor_plan.png
+
+sim:
+  fps: 1.0
+  open_h: 8
+  close_h: 20
+  train_days: 6
+  test_seeds: [100, 101, 102]   # unseen days; the first one is shown in the dashboard
+
+analytics:
+  ts_bin_s: 60               # per-minute series (what the forecaster uses)
+  min_visit_s: 3.0
+  merge_gap_s: 1.0
+  stop_speed_ms: 0.2
+  min_stop_s: 2.0
+  crowd_radius_m: 1.5
+  crowd_count: 3
+  ahead_dist_m: 1.5
+  passby_radius_m: 2.0
+  heat_cell_m: 0.25
+  heat_sigma_cells: 2.0
+  v_free_ms: 1.2
+  bottleneck_threshold: 0.30
+  bottleneck_sustain_s: 120  # production default is 60 s; 2 one-minute bins here
+  queue_window_s: 300
+  dead_zone_decile: 0.10
+  dead_zone_rel_median: 0.3
+  main_path_pct: 80
+  main_path_decay_m: 4.0
+
+actions:
+  rate_limit_s: 900          # one repeat per (zone, kind) per 15 min
+  queue_open_till: 6
+  wait_open_till_min: 5.0
+  endcap_stop_ratio: 0.15
+  endcap_min_passers: 8
+
+forecast:
+  horizons_min: [5, 10]
+  alert_threshold: 0.30
+  model_dir: outputs/forecast

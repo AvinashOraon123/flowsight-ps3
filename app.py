@@ -114,8 +114,9 @@ with tab_live:
             st.info("No video for this source - use the time slider; the heat map shows the last 10 minutes.")
     with right:
         step = 1.0 if src == "clip" else 60.0
-        now = st.slider("Time", 0.0, T - step, min(T - step, T / 2), step, key="live_t",
-                        format="%.0f", help="seconds into the clip (clip) / seconds since opening (simulated day)")
+        opts = [float(v) for v in np.arange(0, T - step, step)]
+        now = st.select_slider("Time", options=opts, value=opts[len(opts) // 2], key=f"live_t_{src}",
+                               format_func=lambda v: fmt_t(v, src))
         st.markdown(f"**State at {fmt_t(now, src)}**")
         cur = ts[(ts["t"] >= now) & (ts["t"] < now + step)].groupby("zone").agg(
             people=("count", "mean"), speed=("v_mean", "mean"), C=("C", "mean")).reindex(zones.names).round(2)
@@ -131,10 +132,24 @@ with tab_live:
                         f"at {fmt_t(a['t'], src)}</span></div>", unsafe_allow_html=True)
         if not feed:
             st.caption("No alerts yet at this time.")
-    st.markdown("#### Cumulative foot-traffic heat map")
-    hp = OUT / src / "heatmap.png"
-    if hp.exists():
-        st.image(str(hp), width=420, caption="person-seconds on a 0.25 m grid, Gaussian smoothed")
+    h1, h2 = st.columns(2)
+    with h1:
+        st.markdown("#### Cumulative foot-traffic heat map")
+        hp = OUT / src / "heatmap.png"
+        if hp.exists():
+            st.image(str(hp), width=460, caption="person-seconds on a 0.25 m grid, Gaussian smoothed")
+    if src == "sim":
+        with h2:
+            st.markdown(f"#### Heat map of the 10 minutes before {fmt_t(now, src)}")
+            trk = get(src, "tracks.parquet")
+            if trk is not None:
+                import cv2
+                w = trk[(trk["t"] >= now - 600) & (trk["t"] < now)]
+                hg = HeatGrid(zones.width_m, zones.height_m, 0.25)
+                hg.add(w["x"].to_numpy(), w["y"].to_numpy(), 1.0)
+                base = cv2.imread(str(ROOT / plan_png))
+                img = render_heat(hg.smoothed(2.0), base, vmax=max(float(hg.smoothed(2.0).max()), 1.0))
+                st.image(img[:, :, ::-1], width=460, caption="simulated shoppers, last 10 min")
 
 # ================================================================== ZONES
 with tab_zones:
@@ -248,18 +263,19 @@ with tab_fc:
     fe = (OUT / "forecast" / "forecast_eval.parquet")
     meta = (OUT / "forecast" / "forecast_meta.json")
     if not fe.exists():
-        st.info("Run `python -m flowsight.forecast` to train the forecaster on simulated days.")
+        st.info("Run `python -m flowsight.simulate` to simulate store days and train the forecaster.")
     else:
         fdf, fm = pd.read_parquet(fe), json.loads(meta.read_text())
         zsel = st.selectbox("Zone", sorted(fdf["zone"].unique()), index=0)
         h = st.radio("Horizon", fm["horizons_min"], horizontal=True, format_func=lambda v: f"{v} min")
-        g = fdf[(fdf["zone"] == zsel) & (fdf["horizon_min"] == h)].sort_values("target_t")
+        g = fdf[(fdf["day"] == 0) & (fdf["zone"] == zsel) & (fdf["horizon_min"] == h)].sort_values("target_t")
         fig = go.Figure()
         hr = g["target_t"] / 3600 + 8
         fig.add_scatter(x=hr, y=g["actual_C"], name="actual C", line=dict(color="#333"))
         fig.add_scatter(x=hr, y=g["pred_C"], name=f"forecast made {h} min earlier", line=dict(color="#f0803c"))
         fig.add_scatter(x=hr, y=g["persist_C"], name="naive: assume no change", line=dict(color="#aaa", dash="dot"))
-        fig.add_hline(y=fm["threshold"], line_dash="dash", line_color="#d9534f", annotation_text="alert threshold")
+        fig.add_hline(y=fm["threshold"], line_dash="dash", line_color="#d9534f", annotation_text="congestion threshold")
+        fig.add_hline(y=fm["alert_levels"][str(h)], line_dash="dot", line_color="#f0803c", annotation_text="forecast alert level")
         fig.update_layout(height=380, xaxis_title="hour of day (simulated)", yaxis_title="congestion C",
                           margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig, width="stretch")
@@ -269,8 +285,9 @@ with tab_fc:
         c2.metric("MAE (naive)", f"{k.get('mae_naive', float('nan')):.3f}")
         c3.metric("Flag F1 (LightGBM)", f"{k.get('f1', float('nan')):.2f}")
         c4.metric("Flag F1 (naive)", f"{k.get('f1_naive', float('nan')):.2f}")
-        st.caption(f"Trained on {fm['train_days']} simulated days, tested on {fm['test_days']} unseen day(s). "
-                   "Lead time = how early staff are warned before the zone is congested.")
+        st.caption(f"Trained on {fm['train_days']} simulated days, alert level tuned on {fm['validation_days']}, scored on {fm['test_days']} unseen days "
+                   f"(pooled; the chart shows the first). Onsets: {k.get('n_onsets')} zone congestions began; "
+                   f"warned {h} min ahead: {k.get('onset_recall', float('nan')):.0%} (naive {k.get('onset_recall_naive', float('nan')):.0%}).")
         fa = [a for a in (get("sim", "alerts.json") or []) if a["kind"] == "forecast"][:5]
         if fa:
             st.markdown("**Forecast-driven actions**")

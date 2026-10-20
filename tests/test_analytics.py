@@ -193,6 +193,11 @@ def test_queue_alert_has_reason_and_audience():
     assert len(a) == 1 and a[0].audience == "Floor staff" and "Queue of 7" in a[0].reason and "6.4" in a[0].reason
 
 
+def test_queue_alert_ignores_tiny_queue_with_huge_wait():
+    q = pd.DataFrame(dict(t=[1.0], queue_len=[1], service_per_min=[0.2], est_wait_min=[9.7]))
+    assert actions.queue_alerts(q, "Checkout", dict(queue_open_till=5, wait_open_till_min=5.0)) == []
+
+
 def test_rate_limit_and_ranking():
     mk = lambda t, z, imp: actions.Alert(t, z, "queue", "x", "y", imp, "Floor staff", "seconds")
     al = actions.rate_limit([mk(0, "A", 1), mk(5, "A", 9), mk(130, "A", 2), mk(1, "B", 3)], 120)
