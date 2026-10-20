@@ -83,18 +83,104 @@ def run_vision(cfg: dict, out_dir: Path, log=print) -> pd.DataFrame:
     return df
 
 
+# ------------------------------------------------- step 2: floor coordinates
+def project_tracks(df_img: pd.DataFrame, H: np.ndarray, zones, min_track_s: float = 1.0) -> pd.DataFrame:
+    """Foot points -> floor metres, Kalman-smoothed per track, with speed and zone label."""
+    from .geometry import image_to_floor
+    from .track import FloorSmoother
+
+    df = df_img.sort_values(["track_id", "t"]).reset_index(drop=True)
+    dur = df.groupby("track_id")["t"].transform(lambda s: s.max() - s.min())
+    df = df[dur >= min_track_s].reset_index(drop=True)
+    f = image_to_floor(H, df[["u", "v"]].to_numpy())
+    df["fx"], df["fy"] = f[:, 0], f[:, 1]
+    sm = FloorSmoother()
+    out = np.zeros((len(df), 4))
+    for i, (tid, t, x, y) in enumerate(zip(df["track_id"], df["t"], df["fx"], df["fy"])):
+        out[i] = sm.update(int(tid), float(t), float(x), float(y))
+    df["x"], df["y"], df["vx"], df["vy"] = out.T
+    df["speed"] = np.hypot(df["vx"], df["vy"])
+    df["zone"] = zones.locate(df["x"], df["y"])
+    return df
+
+
+# ------------------------------------------------------- steps 3-4: analytics
+def run_analytics(cfg: dict, df_img: pd.DataFrame, out_dir: Path, fps: float, log=print) -> dict:
+    import json
+
+    from . import actions, bottleneck, heatmap, journeys, metrics
+    from .geometry import load_homography
+    from .zones import ZoneSet
+
+    p, zones = cfg["analytics"], ZoneSet.load(rpath(cfg, "zones"))
+    H = load_homography(rpath(cfg, "homography"))
+    tr = project_tracks(df_img, H, zones, p.get("min_track_s", 1.0))
+    tr = metrics.add_motion_state(tr, fps, p)
+    events = metrics.zone_events(tr, fps, p)
+    table = metrics.build_zone_table(tr, events, zones, p)
+
+    t_end = float(tr["t"].max() + 1.0 / fps)
+    ts = bottleneck.zone_timeseries(tr, zones, fps, 1.0, p["v_free_ms"], t_end=t_end)
+    bn = bottleneck.flag_bottlenecks(ts, p["bottleneck_threshold"], p["bottleneck_sustain_s"])
+    heat = heatmap.heat_from_tracks(tr, zones.width_m, zones.height_m, fps, p["heat_cell_m"])
+    dz = bottleneck.dead_zones(table, zones, heat, p)
+
+    peak = ts.groupby("zone").agg(peak_count=("count", "max"), peak_rho=("rho", "max"), peak_C=("C", "max"))
+    bn_min = bn.groupby("zone")["duration_s"].sum() / 60.0
+    table = table.merge(peak, left_on="zone", right_index=True, how="left")
+    table["bottleneck_min"] = table["zone"].map(bn_min).fillna(0.0)
+    table = table.merge(dz[["zone", "dead_zone", "adj_visit_rate"]], on="zone", how="left")
+    table["dead_zone"] = table["dead_zone"].fillna(False).astype(bool)
+
+    queues = {z.name: metrics.queue_series(ts, events, z.name) for z in zones.of_kind("queue")}
+    for name, q in queues.items():
+        i = table["zone"] == name
+        table.loc[i, "peak_queue"] = q["queue_len"].max()
+        table.loc[i, "max_est_wait_min"] = q["est_wait_min"].max()
+    jt = journeys.journey_table(tr, events)
+    al = actions.generate(ts, queues, bn, table, dz, t_end, cfg["actions"])
+
+    tr.to_parquet(out_dir / "tracks.parquet")
+    tr[["frame", "t", "track_id", "x", "y", "speed", "zone", "state"]].to_csv(out_dir / "tracks.csv", index=False)
+    events.to_parquet(out_dir / "zone_events.parquet")
+    table.to_parquet(out_dir / "zone_table.parquet")
+    table.to_csv(out_dir / "zone_table.csv", index=False)
+    ts.to_parquet(out_dir / "zone_timeseries.parquet")
+    bn.to_parquet(out_dir / "bottlenecks.parquet")
+    dz.to_parquet(out_dir / "dead_zones.parquet")
+    jt.to_parquet(out_dir / "journeys.parquet")
+    for name, q in queues.items():
+        q.to_parquet(out_dir / f"queue_{name.replace(' ', '_').lower()}.parquet")
+    np.save(out_dir / "heat_grid.npy", heat.grid)
+    plan = cv2.imread(str(rpath(cfg, "floor_plan")))
+    cv2.imwrite(str(out_dir / "heatmap.png"), heatmap.render_heat(heat.smoothed(p["heat_sigma_cells"]), plan))
+    (out_dir / "alerts.json").write_text(json.dumps([a.asdict() for a in al], indent=2))
+    summary = dict(duration_s=t_end, fps=fps, n_tracks=int(tr["track_id"].nunique()), n_samples=int(len(tr)),
+                   n_visits=int(events["is_visit"].sum()), n_bottlenecks=int(len(bn)),
+                   n_dead_zones=int(table["dead_zone"].sum()), n_alerts=len(al),
+                   n_stops_engaged=int(tr.loc[tr.state == "engaged", "stop_id"].nunique()),
+                   n_stops_blocked=int(tr.loc[tr.state == "blocked", "stop_id"].nunique()))
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+    log(f"analytics: {summary}")
+    return dict(tracks=tr, events=events, table=table, ts=ts, bn=bn, dz=dz, alerts=al, queues=queues,
+                journeys=jt, heat=heat, zones=zones, summary=summary)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/demo.yaml")
-    ap.add_argument("--reuse", action="store_true", help="reuse outputs/tracks_img.parquet")
+    ap.add_argument("--reuse", action="store_true", help="reuse outputs/tracks_img.parquet (skip detection)")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     out = rpath(cfg, cfg["out_dir"])
     out.mkdir(parents=True, exist_ok=True)
     if a.reuse and (out / "tracks_img.parquet").exists():
-        pd.read_parquet(out / "tracks_img.parquet")
+        df = pd.read_parquet(out / "tracks_img.parquet")
+        meta = pd.read_json(out / "vision_meta.json", typ="series")
     else:
-        run_vision(cfg, out)
+        df = run_vision(cfg, out)
+        meta = pd.read_json(out / "vision_meta.json", typ="series")
+    run_analytics(cfg, df, out, float(meta["fps"]))
 
 
 if __name__ == "__main__":

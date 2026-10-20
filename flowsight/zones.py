@@ -45,8 +45,9 @@ class ZoneSet:
         for z in raw:
             poly = Polygon(z["polygon"])
             geom = poly.difference(unary_union(taken)) if taken else poly
-            zones.append(Zone(z["name"], z.get("kind", "aisle"), z["priority"],
-                              float(z.get("rho_max", 4.0)), poly, geom))
+            area = geom.area
+            rho_max = z["capacity"] / area if "capacity" in z else float(z.get("rho_max", 4.0))
+            zones.append(Zone(z["name"], z.get("kind", "aisle"), z["priority"], rho_max, poly, geom))
             taken.append(poly)
         fp = d["floor_plan"]
         return cls(zones, fp["width_m"], fp["height_m"], fp["px_per_m"])

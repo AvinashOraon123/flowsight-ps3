@@ -25,7 +25,7 @@ analytics:
   heat_cell_m: 0.25
   heat_sigma_cells: 2.0
   v_free_ms: 1.2
-  bottleneck_threshold: 0.12 # C above this ...
+  bottleneck_threshold: 0.30 # C above this ...
   bottleneck_sustain_s: 8    # ... for this long => flag. Production = 60 s; the demo clip is only 35 s long.
   dead_zone_decile: 0.10
   dead_zone_rel_median: 0.3
