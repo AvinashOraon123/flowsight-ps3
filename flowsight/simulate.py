@@ -42,7 +42,9 @@ TILL_Y = 4.6
 QUEUE_APPROACH = np.array([24.0, 12.5])
 WALK = 1.2
 GATE_SERVICE_S, TILL_SERVICE_S = 60.0, 30.0
-GT_WAIT_THRESHOLD = {"aisle": 3.0, "queue": 5.0}      # people truly waiting that make a minute a ground-truth jam
+# A minute is a ground-truth jam when this many people are truly held up: at an aisle gate, those waiting PLUS the one
+# being squeezed past the stack; at the checkout lane, those waiting (being served at a till is normal progress).
+GT_WAIT_THRESHOLD = {"aisle": 3.0, "queue": 5.0}
 
 
 def _lognorm(rng, mean: float, sigma: float = 0.4) -> float:
@@ -85,6 +87,7 @@ class Store:
         self.gate_free = {a: 0.0 for a in AISLES}
         self.till_log: list[tuple[float, float]] = []                  # (arrival, start)
         self.gate_log = {a: [] for a in AISLES}
+        self.gate_service = {a: [] for a in AISLES}                    # (start, end) of each squeeze past the stack
         self.sales: dict[str, int] = {}
         self.endcap = {"passers": 0, "stoppers": 0}
         self.engaged_stops: dict[str, int] = {}
@@ -171,6 +174,7 @@ def shopper_proc(st: Store, sh: Shopper, t0: float):
             service = _lognorm(rng, GATE_SERVICE_S, .3)
             st.gate_free[zone] = start + service
             log.append((t, start))
+            st.gate_service[zone].append((start, start + service))
             t, p = _wait_in_line(sh, t, start, p, log, len(log) - 1,
                                  lambda k, gx=gx: np.array([gx, GATE_Y + 0.8 * (k + 1)]), "blocked")
             t, p = sh.walk(t, p, (gx, GATE_Y))
@@ -252,23 +256,31 @@ def simulate_day(seed: int, zones: ZoneSet, open_h: float = 8, close_h: float = 
                 engaged_stops=st.engaged_stops, n_shoppers=len(shoppers), abandons=st.abandons)
 
 
+def _overlap_per_minute(intervals, n: int) -> np.ndarray:
+    """Average number of people present per minute for a list of (t0, t1) intervals."""
+    w = np.zeros(n)
+    for a, s in intervals:
+        if s <= a:
+            continue
+        for m in range(int(a // 60), min(int(s // 60) + 1, n)):
+            w[m] += max(min(s, (m + 1) * 60) - max(a, m * 60), 0) / 60.0
+    return w
+
+
 def _waiting_per_minute(st: Store, close_s: float) -> pd.DataFrame:
+    """Simulator ground truth per zone-minute: `waiting` (in line) and `held` (people actually held up)."""
     n = int(close_s // 60) + 1
     out = []
-    logs = {"Checkout lane": st.till_log, **{a: st.gate_log[a] for a in AISLES}}
-    for zone, log in logs.items():
-        w = np.zeros(n)
-        for a, s in log:
-            if s <= a:
-                continue
-            for m in range(int(a // 60), min(int(s // 60) + 1, n)):
-                w[m] += max(min(s, (m + 1) * 60) - max(a, m * 60), 0) / 60.0
-        out.append(pd.DataFrame(dict(t=np.arange(n) * 60.0, zone=zone, waiting=w)))
+    waits = {"Checkout lane": st.till_log, **{a: st.gate_log[a] for a in AISLES}}
+    for zone, log in waits.items():
+        w = _overlap_per_minute(log, n)
+        held = w + (_overlap_per_minute(st.gate_service[zone], n) if zone in AISLES else 0.0)
+        out.append(pd.DataFrame(dict(t=np.arange(n) * 60.0, zone=zone, waiting=w, held=held)))
     return pd.concat(out, ignore_index=True)
 
 
 def main(argv=None) -> None:
-    from . import bottleneck, forecast
+    from . import bottleneck, forecast, metrics
     from .pipeline import analyze, load_config, rpath
 
     ap = argparse.ArgumentParser()
@@ -287,7 +299,7 @@ def main(argv=None) -> None:
 
     def day_ts(seed):
         d = simulate_day(seed, zones, s["open_h"], s["close_h"], s["fps"])
-        tr = d["tracks"]
+        tr = metrics.add_motion_state(d["tracks"], s["fps"], p)     # engaged stops are excluded from the speed term
         ts = bottleneck.zone_timeseries(tr, zones, s["fps"], p["ts_bin_s"], p["v_free_ms"], t_end=(s["close_h"] - s["open_h"]) * 3600)
         arrivals = tr.groupby("track_id")["t"].min().to_numpy()
         return d, ts, arrivals

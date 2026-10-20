@@ -21,9 +21,16 @@ def congestion(rho, v, rho_max: float, v_free: float = 1.2):
 
 
 def zone_timeseries(tracks: pd.DataFrame, zones: ZoneSet, fps: float, bin_s: float = 1.0,
-                    v_free: float = 1.2, warmup_s: float = 1.0, t_end: float | None = None) -> pd.DataFrame:
-    """Per zone and time bin: count, rho, mean speed, C. Gap-free (empty bins = 0 people, C = 0)."""
+                    v_free: float = 1.2, warmup_s: float = 1.0, t_end: float | None = None,
+                    exclude_engaged: bool = True) -> pd.DataFrame:
+    """Per zone and time bin: count, rho, mean speed, C. Gap-free (empty bins = 0 people, C = 0).
+
+    rho counts everyone in the zone. The speed term is the mean *walking* speed (as in the model): people who
+    stopped by choice (state == "engaged") are left out, because someone reading a label is not being held up.
+    Without this a crowd of browsers looks like a jam. Needs a `state` column (metrics.add_motion_state);
+    without one every sample counts."""
     tracks = tracks.reset_index(drop=True)
+    use_state = exclude_engaged and "state" in tracks.columns
     df = tracks[tracks["zone"].notna()].copy()
     df["bin"] = np.floor(df["t"] / bin_s).astype(int)
     age = tracks.groupby("track_id")["t"].transform("min")
@@ -38,7 +45,8 @@ def zone_timeseries(tracks: pd.DataFrame, zones: ZoneSet, fps: float, bin_s: flo
         c = d.groupby("bin").size()                 # person-samples per bin
         cnt[np.clip(c.index.to_numpy(), 0, n_bins - 1)] = c.to_numpy() / frames_per_bin
         v = np.full(n_bins, v_free)
-        w = d[d["age"] >= warmup_s].groupby("bin")["speed"].mean()
+        walking = d[(d["age"] >= warmup_s) & ((d["state"] != "engaged") if use_state else True)]
+        w = walking.groupby("bin")["speed"].mean()
         v[np.clip(w.index.to_numpy(), 0, n_bins - 1)] = w.to_numpy()
         rho = cnt / z.area
         C = congestion(rho, v, z.rho_max, v_free)

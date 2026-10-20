@@ -304,8 +304,9 @@ with tab_m:
         md = json.loads(mf.read_text())
         rows = []
         for m in md["metrics"]:
-            rows.append({"metric": m["name"], "target": m["target"], "result": m["value"], "status": m["status"],
-                         "measured on": m["dataset"]})
+            rows.append({"metric": m["name"], "target": m["target"], "result": m["value"],
+                         "vs target": {True: "✅ met", False: "❌ not met", None: "-"}[m["met"]],
+                         "status": m["status"], "measured on": m["dataset"]})
         df = pd.DataFrame(rows)
         st.dataframe(df, hide_index=True, width="stretch")
         st.caption("`measured` = we ran it. `target` = goal only, not yet measured. Targets are never presented as results. "

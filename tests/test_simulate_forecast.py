@@ -47,8 +47,10 @@ def test_endcap_is_seen_but_ignored(day):
 
 
 def test_jams_and_queue_exist_in_ground_truth(day):
-    w = day["gt_wait"].groupby("zone")["waiting"].max()
-    assert w["Checkout lane"] >= GT_WAIT_THRESHOLD["queue"] or w[["Aisle 1", "Aisle 2", "Aisle 3"]].max() >= GT_WAIT_THRESHOLD["aisle"]
+    g = day["gt_wait"]
+    assert (g["held"] >= g["waiting"]).all()                      # held up = waiting + being squeezed past
+    w = g.groupby("zone")[["waiting", "held"]].max()
+    assert w.loc["Checkout lane", "waiting"] >= GT_WAIT_THRESHOLD["queue"] or w.loc[["Aisle 1", "Aisle 2", "Aisle 3"], "held"].max() >= GT_WAIT_THRESHOLD["aisle"]
     jammed = {z for z, _, _ in day["windows"]["jams"]}
     assert jammed <= {"Aisle 1", "Aisle 2", "Aisle 3"}
 

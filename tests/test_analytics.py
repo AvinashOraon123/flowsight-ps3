@@ -153,6 +153,20 @@ def test_zone_timeseries_density_and_speed(zones):
     assert a["C"].mean() == pytest.approx((4 / 96) / (10 / 96) * 1.0, abs=0.05)    # rho/rho_max = 0.4
 
 
+def test_browsers_are_not_a_jam_but_blocked_people_are(zones):
+    def crowd(state):
+        rows = [make_track(i, [(2 + 0.5 * i, 2, 2 + 0.5 * i, 2, 20)], zones) for i in range(4)]
+        return pd.concat(rows, ignore_index=True).assign(state=state)
+    kw = dict(zones=zones, fps=FPS, bin_s=1.0, v_free=1.2, t_end=20)
+    browsing = bottleneck.zone_timeseries(crowd("engaged"), **kw)
+    stuck = bottleneck.zone_timeseries(crowd("blocked"), **kw)
+    a = lambda ts: ts[(ts.zone == "A") & ts.t.between(5, 15)]["C"].mean()
+    assert a(browsing) == pytest.approx(0.0, abs=1e-6)          # standing by choice: nobody is held up
+    assert a(stuck) > 0.3                                       # same positions, but held up: congested
+    no_state = bottleneck.zone_timeseries(crowd("engaged").drop(columns="state"), **kw)
+    assert a(no_state) > 0.3                                    # without a state column every sample counts
+
+
 def test_heatmap_conserves_person_seconds():
     h = heatmap.HeatGrid(10, 10, 0.25)
     h.add([2, 2, 5], [3, 3, 5], 0.5)
