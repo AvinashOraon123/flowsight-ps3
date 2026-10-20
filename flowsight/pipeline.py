@@ -112,6 +112,10 @@ def run_analytics(cfg: dict, df_img: pd.DataFrame, out_dir: Path, fps: float, lo
 
     zones = ZoneSet.load(rpath(cfg, "zones"))
     tr = project_tracks(df_img, load_homography(rpath(cfg, "homography")), zones, cfg["analytics"].get("min_track_s", 1.0))
+    from .staff import exclude_staff
+    tr, staff_ids = exclude_staff(tr, cfg.get("staff"))                 # no `staff:` block in the config = nobody excluded
+    if staff_ids:
+        log(f"staff excluded: {len(staff_ids)} tracks")
     return analyze(cfg, tr, zones, fps, out_dir, log=log)
 
 

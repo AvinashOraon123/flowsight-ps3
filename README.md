@@ -65,7 +65,7 @@ python -m eval.run_eval                                        # measures everyt
 streamlit run app.py                                           # dashboard: Live, Zones, Journeys, Forecast, Metrics
 uvicorn flowsight.api:app --port 8000                          # API: /metrics /alerts /heatmap and WS /live  (docs at /docs)
 python -m flowsight.pipeline --config configs/demo.yaml --live # streaming mode: alerts print as they fire (RTSP: --source rtsp://...)
-python -m pytest -q                                            # 60 tests
+python -m pytest -q                                            # 67 tests
 ```
 
 Interactive calibration for your own camera: `python -m flowsight.calibrate --frame frame.jpg --floor-plan floor_plan.png --px-per-m 40` (click 4+ points on the frame, then the same points on the plan).
@@ -93,8 +93,8 @@ The MOT17-04 scene is a night-time shopping street seen from above, **not a stor
 
 - One 35 s public clip; no real store footage; zones illustrative; floor accuracy unmeasured.
 - Stock COCO YOLOv8n, not fine-tuned. Tracking breaks (86 ID switches for 79 people) shorten measured dwell.
-- Cross-camera stitching and appearance re-ID (OSNet) are **not built**. Single camera only.
-- Staff are not excluded: a doorman standing still shows up as an engaged shopper.
+- Cross-camera stitching (`reid.py`: floor-space + colour-histogram appearance, Hungarian assignment) is built but tested only on **synthetic** two-camera data (pairwise F1 0.82 with appearance, 0.79 without). The OSNet embedding hook exists but `torchreid` is not installed or tested. The pipeline itself still runs one camera.
+- Staff exclusion (`staff.py`: uniform colour, staff zones, time on floor) is **off unless a `staff:` block is in the config**. It was checked on synthetic staff only (precision 0.94, recall 1.0, with 27 shoppers wrongly removed out of 951); no real uniforms were tested.
 - Jam, queue and dead-zone results, and the forecaster, are validated on **simulated** days with exact positions. They test the logic, not the camera.
 - The forecaster beats a no-change baseline at 5 minutes but not at 10; jam start times are random in the simulator.
 - The POS-based "looked but did not buy" rule runs only on simulated sales data.
@@ -107,6 +107,6 @@ The MOT17-04 scene is a night-time shopping street seen from above, **not a stor
 flowsight/   detect, track, calibrate, geometry, zones, metrics, heatmap, journeys, bottleneck, forecast,
              actions, simulate, pipeline, online, api, live, render
 eval/        mot_eval (AP, CLEAR-MOT, IDF1, dwell vs ground truth), sim_eval, run_eval
-tests/       60 tests (geometry, zones, dwell, engaged/blocked, congestion, actions, simulator, forecaster, eval metrics, API)
+tests/       67 tests (geometry, zones, dwell, engaged/blocked, congestion, actions, simulator, forecaster, eval metrics, API)
 configs/     demo.yaml (real clip), sim.yaml (simulated store)
 ```

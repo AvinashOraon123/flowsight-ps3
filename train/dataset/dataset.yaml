@@ -1,0 +1,5 @@
+path: C:/Users/AVINASH/Downloads/everseen_cv_hackathon/flowsight-ps3/flowsight/train/dataset
+train: images/train
+val: images/val
+names:
+  0: person

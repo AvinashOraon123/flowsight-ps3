@@ -65,3 +65,12 @@ _Generated 2026-10-20 11:55 by `python -m eval.run_eval`._
 - Staff are not excluded (a doorman standing still shows up as an engaged shopper).
 - Zones were drawn after looking at the clip's heat map so each output has something to show.
 - `motmetrics` is not used (it breaks on NumPy 2); IDF1, MOTA and AP are implemented in `eval/mot_eval.py` and unit-tested.
+## Add-ons (SYNTHETIC data only; `python -m eval.extras_eval` -> `outputs/extras.json`)
+
+| Add-on | Measured on | Result |
+|---|---|---|
+| Cross-camera stitching, floor space + appearance | simulated store, 2 simulated cameras with 2 m overlap, 2 days x 3 h | pairwise precision 0.887, recall 0.754, F1 0.815 |
+| Same, floor space only | same | precision 0.880, recall 0.719, F1 0.791 |
+| Staff exclusion (uniform cue) | simulated shoppers + 3 synthetic staff in 5-min fragments | precision 0.941, recall 1.0; 27 of 951 shoppers wrongly removed |
+
+These test the logic. Real cameras, real clothing and real uniforms will be harder, and appearance added only 2 points here because the simulated overlap is not crowded.
