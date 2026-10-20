@@ -159,7 +159,8 @@ def run_analytics(cfg: dict, df_img: pd.DataFrame, out_dir: Path, fps: float, lo
                    n_visits=int(events["is_visit"].sum()), n_bottlenecks=int(len(bn)),
                    n_dead_zones=int(table["dead_zone"].sum()), n_alerts=len(al),
                    n_stops_engaged=int(tr.loc[tr.state == "engaged", "stop_id"].nunique()),
-                   n_stops_blocked=int(tr.loc[tr.state == "blocked", "stop_id"].nunique()))
+                   n_stops_blocked=int(tr.loc[tr.state == "blocked", "stop_id"].nunique()),
+                   bottleneck_threshold=p["bottleneck_threshold"])
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     log(f"analytics: {summary}")
     return dict(tracks=tr, events=events, table=table, ts=ts, bn=bn, dz=dz, alerts=al, queues=queues,
@@ -170,6 +171,7 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/demo.yaml")
     ap.add_argument("--reuse", action="store_true", help="reuse outputs/tracks_img.parquet (skip detection)")
+    ap.add_argument("--no-live", action="store_true", help="skip rendering the side-by-side live.mp4")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     out = rpath(cfg, cfg["out_dir"])
@@ -180,7 +182,10 @@ def main(argv=None) -> None:
     else:
         df = run_vision(cfg, out)
         meta = pd.read_json(out / "vision_meta.json", typ="series")
-    run_analytics(cfg, df, out, float(meta["fps"]))
+    res = run_analytics(cfg, df, out, float(meta["fps"]))
+    if not a.no_live:
+        from .live import render_live
+        render_live(cfg, out, res, rpath, float(meta["fps"]))
 
 
 if __name__ == "__main__":

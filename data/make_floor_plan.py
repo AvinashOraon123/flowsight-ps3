@@ -21,6 +21,7 @@ def main() -> None:
         cv2.fillPoly(ov, [pts], KIND_BGR.get(z.get("kind"), (220, 220, 220)))
         img = cv2.addWeighted(ov, 0.55, img, 0.45, 0)
         cv2.polylines(img, [pts], True, (90, 90, 90), 1, cv2.LINE_AA)
+    blank = img.copy()
     for z in d["zones"]:
         pts = (np.array(z["polygon"]) * s)
         cx, cy = pts.mean(0).astype(int)
@@ -34,6 +35,7 @@ def main() -> None:
         cv2.line(img, (0, m * s), (8, m * s), (120, 120, 120), 1)
         cv2.putText(img, f"{m}m", (10, m * s + 12), cv2.FONT_HERSHEY_SIMPLEX, .35, (120, 120, 120), 1)
     cv2.imwrite(str(HERE / "floor_plan.png"), img)
+    cv2.imwrite(str(HERE / "floor_plan_blank.png"), blank)      # no labels: used under live overlays
     print("wrote floor_plan.png", img.shape)
 
 

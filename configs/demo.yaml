@@ -1,6 +1,6 @@
 # FlowSight demo config: public MOT17-04 clip (illustrative zones, NOT a real store).
 video: data/MOT17-04-raw.webm
-out_dir: outputs
+out_dir: outputs/clip
 homography: data/homography.npy
 zones: data/zones.json
 floor_plan: data/floor_plan.png
