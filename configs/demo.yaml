@@ -1,0 +1,44 @@
+# FlowSight demo config: public MOT17-04 clip (illustrative zones, NOT a real store).
+video: data/MOT17-04-raw.webm
+out_dir: outputs
+homography: data/homography.npy
+zones: data/zones.json
+floor_plan: data/floor_plan.png
+
+vision:
+  weights: yolov8n.pt
+  conf: 0.25
+  imgsz: 960            # source is 960x540
+  frame_stride: 2       # 30 fps source -> 15 fps analysed
+  device: null          # null = GPU if present, else CPU
+  max_frames: null      # set e.g. 200 for a quick smoke test
+
+analytics:
+  min_visit_s: 3.0           # a visit counts only if >= 3 s in a zone
+  merge_gap_s: 1.0           # tracker flicker at a zone edge shorter than this is merged
+  stop_speed_ms: 0.2         # slower than this = stopped
+  min_stop_s: 2.0            # stop episodes shorter than this are ignored
+  crowd_radius_m: 1.5        # neighbours inside this radius count as "local density"
+  crowd_count: 3             # >= this many neighbours (incl. none ahead rule) => blocked
+  ahead_dist_m: 1.5          # someone this close in front (+-35 deg) => blocked
+  passby_radius_m: 2.0       # pass-by-to-stop: people passing within this of a zone
+  heat_cell_m: 0.25
+  heat_sigma_cells: 2.0
+  v_free_ms: 1.2
+  bottleneck_threshold: 0.12 # C above this ...
+  bottleneck_sustain_s: 8    # ... for this long => flag. Production = 60 s; the demo clip is only 35 s long.
+  dead_zone_decile: 0.10
+  dead_zone_rel_median: 0.3
+  main_path_pct: 80          # top-20% heat cells form the "main path"
+  main_path_decay_m: 4.0
+
+actions:
+  rate_limit_s: 20           # min gap between repeats of the same (zone, kind) alert; production 120+
+  queue_open_till: 5
+  wait_open_till_min: 5.0
+  endcap_stop_ratio: 0.15
+  endcap_min_passers: 8
+
+forecast:
+  horizons_min: [5, 10]
+  model_dir: outputs/forecast

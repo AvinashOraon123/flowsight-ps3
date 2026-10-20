@@ -1,0 +1,13 @@
+{
+  "note": "ILLUSTRATIVE zones drawn on the floor plan of the public MOT17-04 pedestrian scene, which is NOT a store. Names map to retail concepts so every FlowSight output can be demonstrated. rho_max is the jam density (people/m2) used by the congestion score; values for this clip are scaled to its low crowd density, store-realistic values are used in the simulation.",
+  "floor_plan": {"width_m": 20, "height_m": 22, "px_per_m": 40},
+  "zones": [
+    {"name": "Entrance",       "kind": "entrance", "priority": 1, "rho_max": 0.30, "polygon": [[5, 0], [15, 0], [15, 4], [5, 4]]},
+    {"name": "Promo endcap",   "kind": "endcap",   "priority": 2, "rho_max": 0.50, "polygon": [[8, 8], [12, 8], [12, 11.5], [8, 11.5]]},
+    {"name": "Checkout lane",  "kind": "queue",    "priority": 3, "rho_max": 0.25, "polygon": [[13, 14], [17, 14], [17, 20], [13, 20]]},
+    {"name": "Display corner", "kind": "display",  "priority": 4, "rho_max": 0.30, "polygon": [[16, 4], [20, 4], [20, 12], [16, 12]]},
+    {"name": "Left aisle",     "kind": "aisle",    "priority": 5, "rho_max": 0.15, "polygon": [[0, 4], [6.5, 4], [6.5, 22], [0, 22]]},
+    {"name": "Right aisle",    "kind": "aisle",    "priority": 6, "rho_max": 0.15, "polygon": [[13, 4], [20, 4], [20, 22], [13, 22]]},
+    {"name": "Main aisle",     "kind": "aisle",    "priority": 7, "rho_max": 0.10, "polygon": [[6.5, 4], [13, 4], [13, 22], [6.5, 22]]}
+  ]
+}
