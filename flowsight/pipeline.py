@@ -181,13 +181,62 @@ def analyze(cfg: dict, tr: pd.DataFrame, zones, fps: float, out_dir: Path, forec
                 journeys=jt, heat=heat, zones=zones, summary=summary)
 
 
+# ------------------------------------------------------------------ live mode
+def run_live(cfg: dict, source: str | None = None, speed: float = 0.0, log=print) -> list[dict]:
+    """Stream a video file or RTSP URL through detect -> track -> OnlineEngine; print alerts as they fire.
+
+    speed 0 = as fast as the machine allows, 1 = pace to the source frame rate. Returns the alerts raised."""
+    from .detect import PersonDetector, foot_point
+    from .geometry import load_homography
+    from .online import OnlineEngine
+    from .track import Tracker
+    from .zones import ZoneSet
+
+    v = cfg["vision"]
+    cap = cv2.VideoCapture(str(source or rpath(cfg, "video")))
+    src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    stride = int(v.get("frame_stride", 1))
+    fps = src_fps / stride
+    det, trk = PersonDetector(v["weights"], v["conf"], v["imgsz"], v.get("device")), Tracker(fps)
+    eng = OnlineEngine(ZoneSet.load(rpath(cfg, "zones")), load_homography(rpath(cfg, "homography")), fps,
+                       cfg["analytics"], cfg["actions"])
+    raised, fi, n, t_start = [], -1, 0, time.perf_counter()
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        fi += 1
+        if fi % stride:
+            continue
+        if v.get("max_frames") and n >= v["max_frames"]:
+            break
+        t_in = time.perf_counter()
+        d = trk.update(det(frame))
+        r = eng.update(fi / src_fps, d.tracker_id, foot_point(d.xyxy) if len(d) else [])
+        for a in r["events"]:
+            lat = time.perf_counter() - t_in
+            log(f"[{a.t:6.1f}s] ALERT {a.kind.upper()} -> {a.audience}: {a.action} | {a.reason}  (frame latency {lat * 1000:.0f} ms)")
+            raised.append(a.asdict())
+        n += 1
+        if speed > 0:
+            time.sleep(max(0.0, n / fps / speed - (time.perf_counter() - t_start)))
+    log(f"live: {n} frames, {len(raised)} alerts, {n / (time.perf_counter() - t_start):.1f} FPS")
+    return raised
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/demo.yaml")
     ap.add_argument("--reuse", action="store_true", help="reuse outputs/tracks_img.parquet (skip detection)")
     ap.add_argument("--no-live", action="store_true", help="skip rendering the side-by-side live.mp4")
+    ap.add_argument("--live", action="store_true", help="streaming mode: print alerts as they fire (no files written)")
+    ap.add_argument("--source", help="video file or rtsp:// URL for --live (default: the config's video)")
+    ap.add_argument("--speed", type=float, default=0.0, help="--live pacing: 1 = real time, 0 = as fast as possible")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
+    if a.live:
+        run_live(cfg, a.source, a.speed)
+        return
     out = rpath(cfg, cfg["out_dir"])
     out.mkdir(parents=True, exist_ok=True)
     if a.reuse and (out / "tracks_img.parquet").exists():

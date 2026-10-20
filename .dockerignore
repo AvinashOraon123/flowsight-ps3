@@ -1,0 +1,13 @@
+.venv
+.git
+__pycache__
+*.pyc
+.pytest_cache
+data/*.webm
+data/*.zip
+data/mot17_labels
+outputs/clip/annotated.mp4
+outputs/clip/tracks_img.csv
+outputs/clip/tracks.csv
+outputs/sim/tracks.csv
+*.pt

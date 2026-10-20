@@ -126,6 +126,18 @@ def rate_limit(alerts: list[Alert], min_gap_s: float) -> list[Alert]:
     return out
 
 
+def rate_limit_online(alerts: list[Alert], last: dict, min_gap_s: float) -> list[Alert]:
+    """Streaming version of rate_limit: `last` carries the last-fired time per (zone, kind) between calls."""
+    out = []
+    for a in sorted(alerts, key=lambda a: a.t):
+        k = (a.zone, a.kind)
+        if k in last and a.t - last[k] < min_gap_s:
+            continue
+        last[k] = a.t
+        out.append(a)
+    return out
+
+
 def rank(alerts: list[Alert]) -> list[Alert]:
     """Highest impact first; ties go to the faster timescale / closer audience."""
     ts = {"seconds": 0, "minutes": 1, "daily": 2, "weekly": 3}
